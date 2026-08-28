@@ -142,4 +142,14 @@ def read(data: bytes) -> Node:
             f"{len(nodes) - reachable} of {len(nodes)} nodes are not reachable "
             "from the root — the hierarchy did not decode cleanly"
         )
+    if not root.children:
+        # A new MindNode document ships a ~324-byte base snapshot holding one
+        # childless node titled "Mind Map". Every document whose content lives
+        # outside the snapshot looks exactly like this, so a childless tree is
+        # never worth reporting: there is nothing to extract either way, and
+        # emitting it would claim a populated map is empty.
+        raise SnapshotError(
+            "the snapshot holds a single node with no children, which is what "
+            "an unfolded base snapshot looks like"
+        )
     return root

@@ -38,15 +38,19 @@ class Document:
     operation_count: int
 
     @property
-    def snapshot_is_authoritative(self) -> bool:
-        """Whether the base snapshot alone represents the current document.
+    def has_pending_operations(self) -> bool:
+        """Whether edits are recorded that the base snapshot cannot show.
 
-        A map created by import gets a complete snapshot and no operations. A
-        map typed in the app accumulates operations against an all-but-empty
-        base snapshot, so reading only the snapshot would report a map with
-        one blank node — a confidently wrong answer about someone's work.
+        A non-zero count is proof the snapshot is behind. Zero is NOT proof it
+        is current: operations get pruned locally once they are safely
+        elsewhere, and the base snapshot is not rewritten when they go. Within
+        hours of first measuring 285 operations against "My Areas of Focus",
+        the count read 0 while the snapshot was still the empty 324-byte base
+        and MindNode's own exporter returned 2 KB of content. So this is one
+        signal, never a licence to trust the snapshot — see `snapshot.read`,
+        which refuses a childless tree, and prefer MindNode's own exporter.
         """
-        return self.operation_count == 0
+        return self.operation_count > 0
 
 
 def _query(sql: str, parameters: Sequence[Any] = ()) -> Optional[List[tuple]]:

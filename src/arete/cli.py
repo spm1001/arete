@@ -10,7 +10,7 @@ from pathlib import Path
 from arete import __version__, library, markdown, shortcut
 from arete.mindnode import import_opml
 from arete.opml import render as render_opml
-from arete.outline import depth_counts, parse
+from arete.outline import depth_counts, lift_single_root, parse
 from arete.shortcut import ShortcutError
 from arete.snapshot import SnapshotError, read as read_snapshot
 
@@ -91,6 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --extract: bullets only, no heading, so it feeds back into arete",
     )
     out.add_argument(
+        "--from-snapshot", action="store_true",
+        help="read the library snapshot even if the export Shortcut exists "
+             "(faster, but it can lag the app)",
+    )
+    out.add_argument(
         "--shortcut", default=shortcut.DEFAULT_NAME, metavar="NAME",
         help=f"Shortcut wrapping MindNode's exporter (default: {shortcut.DEFAULT_NAME!r})",
     )
@@ -116,15 +121,23 @@ def do_list() -> int:
         print("arete: MindNode's library holds no documents.", file=sys.stderr)
         return 1
     width = max(len(d.title) for d in documents)
+    exporter = shortcut.installed()
     for document in documents:
-        if document.snapshot_is_authoritative:
-            note = "readable from the library"
-        elif shortcut.installed():
-            note = f"readable via MindNode's exporter ({document.operation_count} unfolded edits)"
-        else:
+        if exporter:
+            note = "MindNode's exporter"
+        elif document.has_pending_operations:
             note = (f"needs the export Shortcut "
                     f"({document.operation_count} unfolded edits)")
+        else:
+            note = "library snapshot (may lag the app)"
         print(f"{document.title:<{width}}  {note}")
+    if not exporter:
+        print(
+            "\narete: no export Shortcut installed, so these read from base\n"
+            "       snapshots, which can lag what MindNode shows. See\n"
+            "       docs/export-shortcut.md — it makes extraction exact.",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -134,16 +147,11 @@ def _via_shortcut(document, plain: bool, shortcut_name: str) -> int:
         text = shortcut.export(document.title, name=shortcut_name)
     except ShortcutError as error:
         print(
-            f"arete: {document.title!r} cannot be read from the library.\n"
-            f"       Its content lives in {document.operation_count} operations that have not\n"
-            "       been folded into a snapshot, and the snapshot alone would report an\n"
-            "       almost empty map — so arete will not answer from it.\n"
-            f"       MindNode's own exporter would work, but {error}.\n"
-            "       Build it once: see docs/export-shortcut.md in the arete repo,\n"
-            "       or export by hand with File > Export > Markdown Text.",
+            f"arete: MindNode's exporter could not read {document.title!r} — {error}.\n"
+            "       Falling back to the library snapshot, which can lag the app.",
             file=sys.stderr,
         )
-        return 1
+        return _from_snapshot(document, plain)
 
     if plain:
         # --plain promises bullets that feed back into arete, so MindNode's own
@@ -155,8 +163,11 @@ def _via_shortcut(document, plain: bool, shortcut_name: str) -> int:
                 file=sys.stderr,
             )
             return 1
+
+        rows = lift_single_root(rows)
+
         for row in rows:
-            print(f"{'  ' * row.depth}- {row.text}")
+            print(f"{'  ' * row.depth}- {row.text}".rstrip())
         print(
             f"{len(rows)} nodes from “{document.title}” "
             f"via {shortcut_name!r}, re-rendered for round-tripping",
@@ -172,7 +183,39 @@ def _via_shortcut(document, plain: bool, shortcut_name: str) -> int:
     return 0
 
 
-def do_extract(name: str, plain: bool, shortcut_name: str) -> int:
+def _from_snapshot(document, plain: bool, quiet: bool = False) -> int:
+    """Decode the library's base snapshot. Fast, but it can lag the app."""
+    data = library.snapshot_bytes(document.document_id)
+    if data is None:
+        print(
+            f"arete: {document.title!r} has no snapshot file in the library.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        root = read_snapshot(data)
+    except SnapshotError as error:
+        print(
+            f"arete: cannot read {document.title!r} from the library — {error}.\n"
+            "       MindNode's own exporter would work: build the export Shortcut\n"
+            "       once (docs/export-shortcut.md), or export by hand with\n"
+            "       File > Export > Markdown Text.",
+            file=sys.stderr,
+        )
+        return 1
+
+    sys.stdout.write(markdown.render(root, heading=not plain))
+    if not quiet:
+        print(
+            f"{len(root)} nodes from “{document.title}”, read from the library "
+            "snapshot — which can lag what MindNode shows",
+            file=sys.stderr,
+        )
+    return 0
+
+
+def do_extract(name: str, plain: bool, shortcut_name: str,
+               from_snapshot: bool = False) -> int:
     matches = library.find(name)
     if not matches:
         if library.documents() is None:
@@ -187,28 +230,16 @@ def do_extract(name: str, plain: bool, shortcut_name: str) -> int:
         return 1
 
     document = matches[0]
-    if not document.snapshot_is_authoritative:
-        return _via_shortcut(document, plain, shortcut_name)
+    if from_snapshot:
+        return _from_snapshot(document, plain)
 
-    data = library.snapshot_bytes(document.document_id)
-    if data is None:
-        print(
-            f"arete: {document.title!r} has no snapshot file in the library.",
-            file=sys.stderr,
-        )
-        return 1
-    try:
-        root = read_snapshot(data)
-    except SnapshotError as error:
-        print(
-            f"arete: could not read {document.title!r} from the library: {error}",
-            file=sys.stderr,
-        )
+    # MindNode's own exporter is authoritative by construction: it reads the
+    # live document. The library snapshot is only a base, and nothing in the
+    # library reliably says how far behind it is — so the exporter goes first
+    # whenever it is available, and the snapshot is the no-setup fallback.
+    if shortcut.installed(shortcut_name):
         return _via_shortcut(document, plain, shortcut_name)
-
-    sys.stdout.write(markdown.render(root, heading=not plain))
-    print(f"{len(root)} nodes from “{document.title}”", file=sys.stderr)
-    return 0
+    return _from_snapshot(document, plain)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -217,7 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_documents:
         return do_list()
     if args.extract:
-        return do_extract(args.extract, args.plain, args.shortcut)
+        return do_extract(args.extract, args.plain, args.shortcut,
+                          args.from_snapshot)
 
     text, default_title = _read_input(args)
     rows = parse(text, args.tab_stop)

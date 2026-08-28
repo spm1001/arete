@@ -14,13 +14,13 @@ arete --opml < list.txt            # convert without touching the app
 
 ## Module Map
 
-Two directions. List → map is `outline` → `opml` → `mindnode`. Map → Markdown is
-`library` → `wire` → `snapshot` → `markdown`, falling back to `shortcut` when the
-snapshot is not authoritative.
+Two directions. List → map is `outline` → `opml` → `mindnode`. Map → Markdown prefers `shortcut` (MindNode's own exporter, reading the live
+document) and falls back to `library` → `wire` → `snapshot` → `markdown` when no
+export Shortcut is installed.
 
 | Module | Role |
 |--------|------|
-| `outline` | Reading a pasted list into rows — indent inference, bullet and rule stripping. Pure, no I/O. |
+| `outline` | Reading a pasted list into rows — indent inference, heading level as depth, bullet and rule stripping, single-root lifting. Pure, no I/O. |
 | `opml` | Rendering rows as OPML, with the attribute escaping MindNode's parser needs. Pure. |
 | `library` | Read-only queries against MindNode's SQLite library: which documents exist, whether each can be trusted, where its snapshot is. |
 | `mindnode` | Writing the temp file, opening it in the app, waiting for it to land, retrying once. |
@@ -50,12 +50,19 @@ node reachable from it — and raises `SnapshotError` rather than returning a tr
 stand behind. Do not relax those checks to make a new file "work": a confidently wrong tree of
 someone's thinking is far worse than an error.
 
-**A snapshot is a base, not the current document.** This is the limitation that matters most.
-A map created by import gets a complete snapshot and zero operations. A map *typed in the app*
-accumulates CRDT operations against an all-but-empty 324-byte base snapshot — so reading only
-the snapshot reports a map with one blank node called "Mind Map". `library.Document`
-.`snapshot_is_authoritative` is false whenever `operation_count > 0`, and `--extract` refuses
-outright in that case. Extraction would need the operation log replayed, which is not built.
+**A snapshot is a base, not the current document — and no local signal reliably says how far
+behind it is.** This is the limitation that matters most, and the first attempt at guarding it
+was wrong. A map typed in the app accumulates CRDT operations against an all-but-empty
+324-byte base snapshot. Gating on `operation_count == 0` looked sufficient, then decayed
+within the hour: "My Areas of Focus" read 285 operations, then 0, while its snapshot was still
+the empty template and MindNode's exporter returned 2 KB of content. arete duly reported the
+map as a single node called "Mind Map" — the exact failure the guard existed to prevent.
+
+Two changes came out of that. `snapshot.read` refuses any tree with a childless root, which
+catches every empty base whatever its title or locale. And `--extract` now prefers MindNode's
+own exporter, using the snapshot only when no export Shortcut is installed, because a
+*stale-yet-populated* snapshot is undetectable from outside and the exporter reads the live
+document. `--from-snapshot` forces the fast path for anyone who wants it.
 
 **The Shortcut fallback is a contract with something we do not own.** `shortcut.export`
 promises only: text in (a map's title), text out (its Markdown). Everything else about that
@@ -74,8 +81,9 @@ Measured 2026-08-28 against MindNode 2026.4.4 on macOS 27. These are app behavio
 - An import fired while another is still settling is dropped with no error, no dialog and nothing in `log show`. Waiting for the document to appear before returning is what makes back-to-back calls safe.
 - An import identical to an existing map appears to be ignored. This confounds bisecting — vary the content whenever you vary anything else. It cost three false conclusions about filenames and temp directories before it was spotted.
 - Documents are a protobuf CRDT operation log (hybrid logical clocks, peer IDs) in SQLite, CloudKit-synced. Read it; never write it.
-- Sibling order is a fractional index — 200, 400, 600, 800, 1000 — so a node can be reordered without renumbering its siblings. Decoding it reproduced a known map's order exactly at every level.
-- `--extract X --plain | arete --stdin --title X` is byte-identical on a snapshot-authoritative map. Verified 2026-08-28 on a 23-line map.
+- Sibling order is a fractional index — 200, 400, 600, 800, 1000 — so a node can be reordered without renumbering its siblings.
+- MindNode's Markdown export uses an H1 for the centre, `##`/`###` for upper branches, then tab-indented `-` bullets, with tags inline as `#Important` and untitled nodes as bare `###`. A parser reading only indentation flattens a 93-node map to two levels, so `outline.parse` counts heading level as depth.
+- `--extract X --plain | arete --stdin --title X` is byte-identical, through either route. Verified 2026-08-28 on a 23-line map, both via the snapshot and via MindNode's exporter.
 
 ## The skill has two copies, on purpose (for now)
 

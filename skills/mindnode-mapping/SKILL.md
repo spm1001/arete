@@ -63,14 +63,18 @@ Each of these cost a real debugging round on 2026-08-28 against MindNode 2026.4.
 
 ## Extraction reads a snapshot, and a snapshot is only a base
 
-**The limitation that matters most.** A map created by *import* gets a complete snapshot and
-zero operations, and reads out perfectly. A map *typed in the app* keeps its content in a CRDT
-operation log against an all-but-empty 324-byte base snapshot — so reading the snapshot alone
-reports a map with one blank node called "Mind Map".
+**The limitation that matters most, and the guard that was not enough.** A map typed in the app
+keeps its content in a CRDT operation log against an all-but-empty 324-byte base snapshot, so
+reading the snapshot alone reports one blank node called "Mind Map".
 
-That is a confidently wrong answer about someone's own thinking, so `--extract` refuses
-whenever a document has any unfolded operations, and `--list` marks which maps are readable.
-Do not work around the refusal by reading the snapshot anyway.
+Gating on "no pending operations" seemed sufficient and then decayed within the hour: one map
+read 285 operations, then 0, while its snapshot was still the empty template and MindNode's
+exporter returned 2 KB of content. arete reported that map as empty — the exact failure the
+guard existed to prevent. **Operation count reaching zero is not evidence the snapshot is
+current.** A stale-yet-populated snapshot cannot be detected from the library at all.
+
+So `--extract` now prefers MindNode's own exporter, which reads the live document, and
+`snapshot.read` refuses any tree whose root has no children.
 
 For those maps `--extract` falls back to **MindNode's own exporter**, driven through a
 Shortcut, which always sees the live document. That Shortcut has to be built once by hand —

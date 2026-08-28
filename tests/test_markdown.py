@@ -52,6 +52,8 @@ def test_bullet_character_is_configurable():
 
 
 def test_a_root_with_no_children_renders_just_the_heading():
+    # snapshot.read refuses such a tree, but markdown.render is pure and takes
+    # any Node — it should not depend on the reader's guards.
     assert markdown.render(Node("Lonely", "r")) == "# Lonely\n\n"
 
 

@@ -88,6 +88,7 @@ def test_len_counts_the_whole_tree():
 
 
 def test_version_is_reported():
+    # version() reads the marker without decoding the tree, so a bare root is fine.
     assert snapshot.version(build([(ROOT, "x")], [(ROOT, None, 0)])) == 10
 
 
@@ -107,8 +108,29 @@ def test_unverified_version_is_refused():
 
 @pytest.mark.parametrize("version", snapshot.KNOWN_VERSIONS)
 def test_every_known_version_is_accepted(version):
-    data = build([(ROOT, "x")], [(ROOT, None, 0)], version=version)
+    data = build(
+        [(ROOT, "x"), (A, "y")],
+        [(ROOT, None, 0), (A, ROOT, 200)],
+        version=version,
+    )
     assert snapshot.read(data).title == "x"
+
+
+def test_a_childless_root_is_refused():
+    # Every MindNode document whose content lives outside the snapshot ships a
+    # ~324-byte base holding one childless node titled "Mind Map". Emitting it
+    # would report a populated map as empty, which is what happened to
+    # "My Areas of Focus" on 2026-08-28 before this guard existed.
+    data = build([(ROOT, "Mind Map")], [(ROOT, None, 200)])
+    with pytest.raises(SnapshotError, match="single node with no children"):
+        snapshot.read(data)
+
+
+def test_a_childless_root_is_refused_whatever_it_is_called():
+    # The default title is localised, so the guard keys on shape not wording.
+    data = build([(ROOT, "Carte heuristique")], [(ROOT, None, 200)])
+    with pytest.raises(SnapshotError, match="single node with no children"):
+        snapshot.read(data)
 
 
 def test_missing_hierarchy_is_refused():

@@ -1,14 +1,15 @@
 ---
 name: mindnode-mapping
-description: Orchestrates turning a list into MindNode nodes with the `arete` CLI — required before hand-building a map node by node, writing OPML by hand, or editing MindNode library files. A 3-step convert-import-verify workflow that catches the two silent behaviours which sink hand-rolled attempts. Triggers on 'paste this list into MindNode', 'make a mind map from these', 'turn this outline into a map', 'mindnode file format', 'arete'. (user)
+description: Orchestrates moving lists in and out of MindNode with the `arete` CLI — required before hand-building a map node by node, writing OPML by hand, or reading MindNode library files. A 3-step convert-import-verify workflow one way and a guarded snapshot decode the other, catching the silent behaviours that sink hand-rolled attempts. Triggers on 'paste this list into MindNode', 'make a mind map from these', 'get this map as markdown', 'export my mind map', 'mindnode file format', 'arete'. (user)
 ---
 
 # MindNode mapping
 
-Getting a list into MindNode is a solved problem with one command. The work is knowing which route is real, because the obvious two are dead ends: pasting a multi-line list produces one node containing line breaks, and the library format is not something to write by hand.
+MindNode goes both ways with one command each. The work is knowing which route is real, because the obvious two are dead ends: pasting a multi-line list produces one node containing line breaks, and the library format is not something to write by hand.
 
 ```bash
-pbpaste | arete --stdin --title "Q3 themes"
+pbpaste | arete --stdin --title "Q3 themes"   # list  -> map
+arete --extract "Q3 themes"                    # map   -> Markdown
 ```
 
 That is usually the whole job. The rest of this exists because MindNode's importer is silent when it declines — and a silent decline is the kind you report as success.
@@ -19,6 +20,7 @@ That is usually the whole job. The rest of this exists because MindNode's import
 - An outline needs to become a map with branches
 - Someone asks how MindNode's file format works, or wants to write one directly
 - MindNode "won't let me paste" a list
+- A map needs to come back out as Markdown, an outline, or text
 
 ## Boundaries
 
@@ -37,6 +39,11 @@ That is usually the whole job. The rest of this exists because MindNode's import
 | `arete --opml > out.opml` | Just the OPML — does not touch the app |
 | `arete --tab-stop N` | Columns a tab counts for when reading indentation (default 4) |
 | `arete --timeout S` | How long to wait for the map to appear (default 12s) |
+| `arete --list` | Every map MindNode holds, and whether each can be read out |
+| `arete --extract NAME` | That map as Markdown — an H1 for the centre, nested bullets below |
+| `arete --extract NAME --plain` | Bullets only, so it feeds straight back in |
+
+Extract and import are inverses: `arete --extract X --plain | arete --stdin --title X` reproduces the map byte-for-byte. That works because the root is never emitted as a bullet — MindNode mints the centre node from the document name on import, so a root bullet would come back a level deeper every cycle.
 
 Indentation carries hierarchy. The indent unit is inferred from the list itself, so tabs, two spaces and four spaces all work, including mixed in one paste — which is exactly what a list assembled from two sources looks like. Bullets and numbering are stripped; horizontal rules are dropped.
 
@@ -53,6 +60,44 @@ Each of these cost a real debugging round on 2026-08-28 against MindNode 2026.4.
 **MindNode appears to ignore an import identical to an existing map.** Re-importing the same content produced nothing on three consecutive tries. This confounds bisecting: a test that re-imports the same file to vary something else will read as a failure of the thing being varied. Vary the content whenever you vary anything else.
 
 **A dropped import and a rejected one look the same from outside** — both are silence. Check the library rather than the app window; `arete` does this for you.
+
+## Extraction reads a snapshot, and a snapshot is only a base
+
+**The limitation that matters most.** A map created by *import* gets a complete snapshot and
+zero operations, and reads out perfectly. A map *typed in the app* keeps its content in a CRDT
+operation log against an all-but-empty 324-byte base snapshot — so reading the snapshot alone
+reports a map with one blank node called "Mind Map".
+
+That is a confidently wrong answer about someone's own thinking, so `--extract` refuses
+whenever a document has any unfolded operations, and `--list` marks which maps are readable.
+Do not work around the refusal by reading the snapshot anyway.
+
+For those maps, use MindNode's own exporter — **File > Export > Markdown Text** — which always
+sees the live document. Replaying the operation log would fix this properly; it is not built,
+because the operations are character-range text edits and getting a CRDT replay subtly wrong
+fails silently.
+
+## MindNode's App Intents — the supported route to both gaps
+
+`/Applications/MindNode.app/Contents/Resources/Metadata.appintents` lists 20 intents, and two
+of them cover exactly what `arete` cannot do:
+
+- **`ExportDocumentIntent`** takes an `exportType` of `markdown` (also `plainText`,
+  `taskPaper`, `opml`-ish `mindnode`, `pdf`, `png`, `svg`). MindNode's own exporter, so it
+  sees the live document, operation log and all.
+- **`CreateNodeIntent`** takes a `createType` of `mainNode` / `parentOf` / `childOf` /
+  `siblingAfter` / `siblingBefore` — so nodes **can** be added to an existing map, which OPML
+  import cannot do.
+
+There is no supported way to invoke an app intent straight from a shell. The route is to build
+one Shortcut by hand in Shortcuts.app, after which `shortcuts run "<name>"` is fully
+scriptable. One manual step, then it composes like anything else.
+
+Read the intents and their parameters with:
+
+```bash
+python3 -c "import json,pathlib;d=json.loads(pathlib.Path('/Applications/MindNode.app/Contents/Resources/Metadata.appintents/extract.actionsdata').read_text());print('\n'.join(sorted(d['actions'])))"
+```
 
 ## The file format, and why not to write it
 
@@ -89,6 +134,8 @@ If a listener appears, the MCP route is live and is the better one — prefer it
 | Re-importing identical content while testing | Reads as a failure of whatever else you changed | Vary the content every time |
 | Deleting test maps via SQLite | Fights CloudKit | Bin them in the app |
 | Assuming the head `<title>` names the map | It names nothing visible | The filename names the map |
+| Reading a 324-byte snapshot as an empty map | It is a base; the content is in the operation log | Check `--list`, or use MindNode's export |
+| Emitting the root as a bullet on extract | Each round trip adds a level | Root is the H1 only; children start at the margin |
 
 ## Integration
 

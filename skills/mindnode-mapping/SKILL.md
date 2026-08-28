@@ -69,12 +69,20 @@ Import always mints a *new* document, so `--append` goes through MindNode's `Cre
 instead, driven by a second hand-built Shortcut (`docs/append-shortcut.md`). It adds one node
 per Shortcut run, walking the list top-down so a parent always exists before its children.
 
-Because the Shortcut matches parents **by title**, `--append` pre-flights before writing
+Working since 2026-08-28, three levels deep. Because the Shortcut matches parents **by title**, `--append` pre-flights before writing
 anything: the map must exist, the `--under` node must exist, and its title must be *unique* in
 that map. It also refuses a batch whose repeated titles would have to act as parents, and
 re-reads the map afterwards to check it grew by exactly the number of nodes added. Appending is
 the one direction that binning a document cannot undo, which is why it checks first and
 verifies after rather than trusting the Shortcut's exit code.
+
+**Building that Shortcut has one trap worth carrying.** An index field you have not typed into
+shows a greyed placeholder `1` indistinguishable from a real value, and an unset index resolves
+to **0** — producing *"You asked for item 0, but the first item is at index 1"* against an action
+whose box plainly reads 1. Three rounds of debugging went elsewhere before the literal reading
+won. `~/Library/Shortcuts/Shortcuts.sqlite` holds what a Shortcut actually contains (actions in
+`ZSHORTCUTACTIONS.ZDATA`, a bplist); the canvas is not authoritative. Reach for it whenever a
+Shortcut looks right and behaves wrong.
 
 ## Running it from another machine
 

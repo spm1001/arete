@@ -1,5 +1,7 @@
 # The append Shortcut
 
+*Built and working, 2026-08-28. Twelve actions.*
+
 `arete` can only ever create a *new* map, because OPML import has no notion of adding to an existing document. MindNode's `CreateNodeIntent` does: it takes a placement (`childOf`, `siblingAfter`, `siblingBefore`, `mainNode`) and the node to place relative to.
 
 Like the export half, it is an App Intent, so it needs one Shortcut built by hand. After that `arete --append` drives it.
@@ -110,7 +112,10 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
    templates mentions it, and Shortcuts only renders parameters that appear in a summary. So
    the node is created untitled and titled by the next action.
 
-10. **Edit Node** — set the title on what step 9 just made. `CreateNodeIntent`'s output type is
+10. **Edit Node** — set the title on what step 9 just made. Leaving *editType* unset is fine:
+    `title` is the enum's first case and it defaults there. Verified working.
+
+    Set the title on what step 9 just made. `CreateNodeIntent`'s output type is
    a `NodeEntity`, so the created node is available as a variable. The action's template is
    `Set ${editType} of ${node} to ${title}`, so it must read:
 
@@ -127,9 +132,25 @@ Nothing needs to be returned, so **Provide Output** can stay off.
 ## Check it
 
 ```bash
-printf 'In my work I am 2\nThe long game\ntest leaf\n' > /tmp/append.txt
-shortcuts run "Arete Append" --input-path /tmp/append.txt
-arete --extract "In my work I am 2" | grep "test leaf"
+arete --stdin --title "Append probe" <<< $'Append target\n\tslot one'
+printf 'Branch A\n\tleaf A1\nBranch B\n' | arete --append --into "Append probe" --under "Append target"
+arete --extract "Append probe"
+```
+
+Nested input is the real test: arete walks the list top-down so each parent exists before its
+children are added. Three levels verified on 2026-08-28.
+
+**Verify from the database, not the canvas**, whenever something looks right and behaves wrong:
+
+```bash
+python3 - <<'EOF'
+import sqlite3, plistlib, pathlib
+db = sqlite3.connect(pathlib.Path.home()/"Library/Shortcuts/Shortcuts.sqlite")
+pk = db.execute("SELECT Z_PK FROM ZSHORTCUT WHERE ZNAME='Arete Append'").fetchone()[0]
+blob = db.execute("SELECT ZDATA FROM ZSHORTCUTACTIONS WHERE ZSHORTCUT=?", (pk,)).fetchone()[0]
+for i, a in enumerate(plistlib.loads(bytes(blob)), 1):
+    print(i, a.get("WFWorkflowActionIdentifier"), a.get("WFWorkflowActionParameters", {}).get("WFItemIndex", ""))
+EOF
 ```
 
 ## Caveats worth knowing before you rely on it

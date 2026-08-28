@@ -28,7 +28,7 @@ export Shortcut is installed.
 | `wire` | A minimal protobuf wire-format reader. Knows nothing about MindNode. |
 | `snapshot` | MindNode's snapshot layout → a `Node` tree, with invariants that refuse a tree we cannot trust. Pure. |
 | `markdown` | A `Node` tree → nested Markdown bullets. Pure. |
-| `shortcut` | Driving MindNode's own exporter through a Shortcut, for maps the snapshot cannot show. |
+| `shortcut` | Driving MindNode's own App Intents through Shortcuts — `export` for maps the snapshot cannot show, `append` for adding to an existing map. |
 | `cli` | Argument parsing, input selection, reporting. |
 
 ## Key Conventions
@@ -82,6 +82,20 @@ own exporter, using the snapshot only when no export Shortcut is installed, beca
 *stale-yet-populated* snapshot is undetectable from outside and the exporter reads the live
 document. `--from-snapshot` forces the fast path for anyone who wants it.
 
+**Appending is the one direction binning a document cannot undo, so it pre-flights.**
+`do_append` confirms the map exists, the parent node exists, and the parent title is *unique*
+before writing anything — the Shortcut matches parents by title, so a duplicate would attach
+the list somewhere plausible and wrong. It also refuses a batch whose repeated titles have to
+act as parents, and it re-reads the map afterwards to check it grew by exactly the number of
+nodes added. Assert on the map, never on the Shortcut's account of itself.
+
+**arete works over ssh, which is why the plugin is worth shipping to tube.** Measured
+2026-08-28 from a non-interactive ssh session to the Mac's Tailscale IP: `shortcuts run` and
+`open -a MindNode` both work, despite `launchctl managername` reporting `Background` rather
+than `Aqua`. Two caveats — `~/.local/bin` is not on a non-interactive ssh PATH, so the CLI
+needs an absolute path or an explicit export; and MindNode was already running, so the
+no-GUI-session case is untested.
+
 **The Shortcut fallback is a contract with something we do not own.** `shortcut.export`
 promises only: text in (a map's title), text out (its Markdown). Everything else about that
 Shortcut is the user's to build — `docs/export-shortcut.md` — so failures there must be
@@ -123,12 +137,12 @@ is a real CRDT replay whose failure mode is silent wrongness. The `shortcut` fal
 the same ground using MindNode's own exporter, so this may never be worth building — bon
 `art-sidofe`.
 
-**`CreateNodeIntent`**, which would let nodes be added to an *existing* map — the other thing
-OPML import cannot do. The intent is there, with `childOf` / `siblingAfter` placement; only the
-export half of the App Intents route is wired up. Tracked as bon `art-kenosa`.
+**Batching the append.** `--append` runs the Shortcut once per node, which is simple and
+correct but takes a second or two each. A looping Shortcut taking the whole list would be
+faster; it was not worth the extra actions to hand-build up front.
 
-**MindNode's MCP server** (`MindNodeAutomationMCP`: `add_nodes`, `move_nodes`,
-`create_connection`, …). As of 2026-08-28 it cannot be enabled: the autostart preference is
-reset by the app on launch and nothing listens. Its resource routes are visible in the binary
-(`mindnode://documents/{documentID}/content/indented-list`) and would be the cleanest
-extraction path of all. See bon `art-vonowu` for the re-check command.
+**MindNode's MCP server** — dropped on purpose (Sameer, 2026-08-28). It cannot be enabled:
+the autostart preference is reset by the app on launch and nothing listens. Its resource routes
+are visible in the binary (`mindnode://documents/{documentID}/content/indented-list`) and would
+be tidier than driving Shortcuts, but the App Intents route now covers both directions, so it
+would buy nothing. The two-command re-check lives in the skill if it ever matters again.

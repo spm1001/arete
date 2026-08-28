@@ -11,6 +11,11 @@ straight from a shell, so the route is a Shortcut built once by hand, which
 
 The contract with that Shortcut is deliberately minimal: it takes the map's name
 as text on stdin and returns the exported Markdown as text.
+
+A second Shortcut wraps `CreateNodeIntent`, which is the only route to adding a
+node to a map that already exists — OPML import always mints a new document.
+Its contract is three lines of text in (map title, parent node title, new node
+title) and nothing out. See `docs/append-shortcut.md`.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 
 DEFAULT_NAME = "Arete Export"
+APPEND_NAME = "Arete Append"
 
 
 class ShortcutError(RuntimeError):
@@ -47,6 +53,18 @@ def installed(name: str = DEFAULT_NAME) -> bool:
 
 def export(document_name: str, name: str = DEFAULT_NAME, timeout: float = 120.0) -> str:
     """Run the export Shortcut for one map and return the Markdown it produced."""
+    text = _run(name, document_name, want_output=True, timeout=timeout)
+    if not text.strip():
+        raise ShortcutError(f"{name!r} returned nothing for {document_name!r}")
+    return text
+
+
+def _run(name: str, payload: str, want_output: bool, timeout: float) -> str:
+    """Run a Shortcut with `payload` as its text input.
+
+    Shared by export and append so both report a missing or misbehaving
+    Shortcut the same way — by name, with what it actually did wrong.
+    """
     names = available()
     if names is None:
         raise ShortcutError(
@@ -56,33 +74,45 @@ def export(document_name: str, name: str = DEFAULT_NAME, timeout: float = 120.0)
         raise ShortcutError(f"no Shortcut named {name!r} on this machine")
 
     with tempfile.TemporaryDirectory() as scratch:
-        source = Path(scratch) / "name.txt"
-        target = Path(scratch) / "out.md"
-        source.write_text(document_name, encoding="utf-8")
+        source = Path(scratch) / "input.txt"
+        target = Path(scratch) / "output.txt"
+        source.write_text(payload, encoding="utf-8")
+        argv = ["shortcuts", "run", name, "--input-path", str(source)]
+        if want_output:
+            argv += ["--output-path", str(target)]
         try:
-            done = subprocess.run(
-                ["shortcuts", "run", name,
-                 "--input-path", str(source),
-                 "--output-path", str(target)],
-                capture_output=True, text=True, timeout=timeout,
-            )
+            done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as expired:
-            raise ShortcutError(
-                f"{name!r} did not finish within {timeout:g}s"
-            ) from expired
+            raise ShortcutError(f"{name!r} did not finish within {timeout:g}s") from expired
         except OSError as error:
             raise ShortcutError(f"could not run {name!r}: {error}") from error
 
         if done.returncode != 0:
             detail = (done.stderr or done.stdout or "").strip() or "no output"
             raise ShortcutError(f"{name!r} failed: {detail}")
+        if not want_output:
+            return ""
         if not target.exists():
             raise ShortcutError(
                 f"{name!r} produced no output — its last action must return "
                 "the exported text"
             )
-        text = target.read_text(encoding="utf-8", errors="replace")
+        return target.read_text(encoding="utf-8", errors="replace")
 
-    if not text.strip():
-        raise ShortcutError(f"{name!r} returned nothing for {document_name!r}")
-    return text
+
+def append(document_title: str, parent_title: str, node_title: str,
+           name: str = APPEND_NAME, timeout: float = 60.0) -> None:
+    """Add one node under `parent_title` in `document_title`.
+
+    The payload is three lines, so a title containing a newline would shift the
+    fields and attach a node somewhere unintended. That is rejected here rather
+    than left to produce a plausible-looking wrong map.
+    """
+    for label, value in (("map title", document_title),
+                         ("parent title", parent_title),
+                         ("node title", node_title)):
+        if "\n" in value or "\r" in value:
+            raise ShortcutError(f"{label} contains a newline, which the three-line "
+                                f"payload cannot carry: {value!r}")
+    _run(name, f"{document_title}\n{parent_title}\n{node_title}\n",
+         want_output=False, timeout=timeout)

@@ -39,6 +39,7 @@ examples:
   arete --list                       what MindNode holds, and what can be read
   arete --extract "Q3 themes"        that map, as Markdown
   arete --extract X --plain | arete --stdin --title X --tags   round-trip
+  arete --append --into "Q3 themes" --under "Risks"    add to an existing map
 """
 
 
@@ -102,6 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--from-snapshot", action="store_true",
         help="read the library snapshot even if the export Shortcut exists "
              "(faster, but it can lag the app)",
+    )
+    add = parser.add_argument_group("adding to a map that already exists")
+    add.add_argument(
+        "--append", action="store_true",
+        help="add the list under a node of an existing map instead of making a new one",
+    )
+    add.add_argument("--into", metavar="MAP", help="with --append: which map")
+    add.add_argument("--under", metavar="NODE",
+                     help="with --append: which node to hang the list from")
+    add.add_argument(
+        "--append-shortcut", default=shortcut.APPEND_NAME, metavar="NAME",
+        help=f"Shortcut wrapping CreateNodeIntent (default: {shortcut.APPEND_NAME!r})",
     )
     out.add_argument(
         "--shortcut", default=shortcut.DEFAULT_NAME, metavar="NAME",
@@ -250,6 +263,140 @@ def do_extract(name: str, plain: bool, shortcut_name: str,
     return _from_snapshot(document, plain)
 
 
+def _map_rows(document, shortcut_name: str):
+    """The map's current contents as outline rows, or None if unreadable.
+
+    Whichever route --extract would take, so the pre-flight check sees the same
+    map the append is about to land in.
+    """
+    if shortcut.installed(shortcut_name):
+        try:
+            return parse(shortcut.export(document.title))
+        except ShortcutError:
+            pass
+    data = library.snapshot_bytes(document.document_id)
+    if data is None:
+        return None
+    try:
+        root = read_snapshot(data)
+    except SnapshotError:
+        return None
+    return parse(markdown.render(root, heading=False))
+
+
+def do_append(text: str, into: str, under: str, tab_stop: int,
+              export_shortcut: str, append_shortcut: str) -> int:
+    """Add a list under a named node of a map that already exists."""
+    matches = library.find(into)
+    if len(matches) != 1:
+        if not matches:
+            print(f"arete: no map matching {into!r}. Try --list.", file=sys.stderr)
+        else:
+            print(f"arete: {into!r} matches several maps:", file=sys.stderr)
+            for document in matches:
+                print(f"         {document.title}", file=sys.stderr)
+        return 1
+    document = matches[0]
+
+    rows = parse(text, tab_stop)
+    if not rows:
+        print("arete: no non-blank lines on input", file=sys.stderr)
+        return 1
+
+    # Pre-flight. Appending is the one direction that cannot be undone by
+    # binning a document, so the parent is confirmed to exist and to be
+    # unambiguous BEFORE anything is written — the Shortcut matches parents by
+    # title, so a duplicate would silently attach the list in the wrong place.
+    existing = _map_rows(document, export_shortcut)
+    if existing is None:
+        print(
+            f"arete: cannot read {document.title!r} to check that {under!r} exists.\n"
+            "       Refusing rather than appending blind.",
+            file=sys.stderr,
+        )
+        return 1
+
+    titles = [row.text for row in existing]
+    hits = titles.count(under)
+    if hits == 0:
+        close = [t for t in titles if under.casefold() in t.casefold()]
+        print(f"arete: {document.title!r} has no node titled {under!r}.", file=sys.stderr)
+        if close:
+            print("       Did you mean:", file=sys.stderr)
+            for candidate in close[:5]:
+                print(f"         {candidate}", file=sys.stderr)
+        return 1
+    if hits > 1:
+        print(
+            f"arete: {document.title!r} has {hits} nodes titled {under!r}, so the\n"
+            "       Shortcut cannot tell which one you mean. Rename one, or pick\n"
+            "       a different parent.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Children are attached by looking their parent up by title, so a repeat
+    # inside the batch would make the second one ambiguous the moment it lands.
+    added = [row.text for row in rows]
+    repeats = {t for t in added if added.count(t) > 1}
+    parents_needed = {r.text for r in rows if any(o.depth == r.depth + 1 for o in rows)}
+    ambiguous = repeats & (parents_needed | {under})
+    if ambiguous:
+        print(
+            "arete: these titles appear more than once in the list and also need "
+            "to act as parents, which the title-based lookup cannot resolve:",
+            file=sys.stderr,
+        )
+        for title in sorted(ambiguous):
+            print(f"         {title}", file=sys.stderr)
+        return 1
+
+    # Walk top-down so a parent always exists before its children are added.
+    stack: dict[int, str] = {}
+    done = 0
+    for row in rows:
+        parent = under if row.depth == 0 else stack.get(row.depth - 1)
+        if parent is None:
+            print(
+                f"arete: {row.text!r} is indented past its parent — nothing sits at "
+                f"depth {row.depth - 1} above it.",
+                file=sys.stderr,
+            )
+            break
+        try:
+            shortcut.append(document.title, parent, row.text, name=append_shortcut)
+        except ShortcutError as error:
+            print(f"arete: {error}", file=sys.stderr)
+            if done:
+                print(
+                    f"       {done} node(s) were already added — the map is "
+                    "part-way through this list.",
+                    file=sys.stderr,
+                )
+            else:
+                print("       Nothing was added. See docs/append-shortcut.md.",
+                      file=sys.stderr)
+            return 1
+        stack[row.depth] = row.text
+        done += 1
+
+    # Post-flight: assert on the map, not on the Shortcut's own account of itself.
+    after = _map_rows(document, export_shortcut)
+    grew = (len(after) - len(existing)) if after is not None else None
+    print(f"{done} node(s) added under “{under}” in “{document.title}”", file=sys.stderr)
+    if grew is None:
+        print("arete: could not re-read the map, so the result is unverified.",
+              file=sys.stderr)
+    elif grew != done:
+        print(
+            f"arete: the map grew by {grew} node(s), not {done} — check it. "
+            "A parent title matched somewhere unexpected, or a node was merged.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -258,6 +405,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.extract:
         return do_extract(args.extract, args.plain, args.shortcut,
                           args.from_snapshot)
+
+    if args.append:
+        if not args.into or not args.under:
+            print("arete: --append needs both --into MAP and --under NODE",
+                  file=sys.stderr)
+            return 1
+        text, _ = _read_input(args)
+        return do_append(text, args.into, args.under, args.tab_stop,
+                         args.shortcut, args.append_shortcut)
 
     text, default_title = _read_input(args)
     rows = parse(text, args.tab_stop)

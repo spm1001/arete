@@ -40,6 +40,7 @@ That is usually the whole job. The rest of this exists because MindNode's import
 | `arete --tab-stop N` | Columns a tab counts for when reading indentation (default 4) |
 | `arete --timeout S` | How long to wait for the map to appear (default 12s) |
 | `arete --tags` | Import via FreeMind, so a trailing `#tag` becomes a real MindNode tag |
+| `arete --append --into MAP --under NODE` | Add the list under a node of a map that already exists |
 | `arete --list` | Every map MindNode holds, and whether each can be read out |
 | `arete --extract NAME` | That map as Markdown — an H1 for the centre, nested bullets below |
 | `arete --extract NAME --plain` | Bullets only, so it feeds straight back in |
@@ -61,6 +62,36 @@ Each of these cost a real debugging round on 2026-08-28 against MindNode 2026.4.
 **MindNode appears to ignore an import identical to an existing map.** Re-importing the same content produced nothing on three consecutive tries. This confounds bisecting: a test that re-imports the same file to vary something else will read as a failure of the thing being varied. Vary the content whenever you vary anything else.
 
 **A dropped import and a rejected one look the same from outside** — both are silence. Check the library rather than the app window; `arete` does this for you.
+
+## Adding to a map that already exists
+
+Import always mints a *new* document, so `--append` goes through MindNode's `CreateNodeIntent`
+instead, driven by a second hand-built Shortcut (`docs/append-shortcut.md`). It adds one node
+per Shortcut run, walking the list top-down so a parent always exists before its children.
+
+Because the Shortcut matches parents **by title**, `--append` pre-flights before writing
+anything: the map must exist, the `--under` node must exist, and its title must be *unique* in
+that map. It also refuses a batch whose repeated titles would have to act as parents, and
+re-reads the map afterwards to check it grew by exactly the number of nodes added. Appending is
+the one direction that binning a document cannot undo, which is why it checks first and
+verifies after rather than trusting the Shortcut's exit code.
+
+## Running it from another machine
+
+`arete` drives a Mac app, but it does **not** need an interactive Mac session. Measured
+2026-08-28 from a non-interactive ssh session to the Mac's Tailscale IP: both `shortcuts run`
+and `open -a MindNode` work, even though `launchctl managername` reports `Background` rather
+than `Aqua`. So a session on another machine can do this:
+
+```bash
+ssh sameer-macbook-air 'export PATH="$HOME/.local/bin:$PATH"; arete --extract "Q3 themes"'
+```
+
+Two things bite. **`~/.local/bin` is not on a non-interactive ssh PATH**, so the CLI needs an
+absolute path or that explicit export. And the Mac's sshd accepts **Tailscale addresses only** —
+`ssh localhost` is refused by design, so use the Tailscale name or IP. MindNode was already
+running when this was measured; whether `open -a` can launch it with no GUI session at all is
+untested.
 
 ## Tags: only FreeMind import creates them, and it is opt-in
 

@@ -66,7 +66,7 @@ Each of these cost a real debugging round on 2026-08-28 against MindNode 2026.4.
 ## Adding to a map that already exists
 
 Import always mints a *new* document, so `--append` goes through MindNode's `CreateNodeIntent`
-instead, driven by a second hand-built Shortcut (`docs/append-shortcut.md`). It adds one node
+instead, driven by a second hand-built Shortcut ([docs/append-shortcut.md](https://github.com/spm1001/arete/blob/main/docs/append-shortcut.md)). It adds one node
 per Shortcut run, walking the list top-down so a parent always exists before its children.
 
 Working since 2026-08-28, three levels deep. Because the Shortcut matches parents **by title**, `--append` pre-flights before writing
@@ -150,7 +150,7 @@ So `--extract` now prefers MindNode's own exporter, which reads the live documen
 
 For those maps `--extract` falls back to **MindNode's own exporter**, driven through a
 Shortcut, which always sees the live document. That Shortcut has to be built once by hand —
-`docs/export-shortcut.md` in the arete repo has the steps — and `arete --list` says whether it
+[docs/export-shortcut.md](https://github.com/spm1001/arete/blob/main/docs/export-shortcut.md) in the arete repo has the steps — and `arete --list` says whether it
 is installed. Without it, export by hand: **File > Export > Markdown Text**.
 
 Replaying the operation log would remove the Shortcut dependency, but the operations are
@@ -174,7 +174,7 @@ Shortcut built by hand in Shortcuts.app, after which `shortcuts run "<name>"` is
 
 **The export half is wired up already**: build a Shortcut called `Arete Export` that takes a
 map's name as text and returns its Markdown, and `arete --extract` uses it automatically for
-exactly the maps the snapshot cannot show. Steps: `docs/export-shortcut.md`. Override the name
+exactly the maps the snapshot cannot show. Steps: [docs/export-shortcut.md](https://github.com/spm1001/arete/blob/main/docs/export-shortcut.md). Override the name
 with `--shortcut NAME`.
 
 **`CreateNodeIntent` is not wired up** — that is the route to appending to an existing map,
@@ -227,6 +227,7 @@ If a listener appears, the MCP route is live and is the better one — prefer it
 ## Integration
 
 - Verifying an import reads MindNode's library directly; if MindNode relocates it, verification degrades to "unknown" and the import still runs. It must never be able to break the tool it checks.
-- Repo, tests and work tracker: `~/repos/spm1001/arete`, bon prefix `art`.
+- Repo, tests and work tracker: [spm1001/arete](https://github.com/spm1001/arete), bon prefix `art`.
+- **Installing the CLI.** The plugin ships this skill everywhere; the `arete` command is macOS-only and installs separately: `uv tool install ~/repos/spm1001/arete` (clone it first). A session on another machine reaches a Mac over ssh — see above.
 
 This covers the common cases, not every case. Where something here does not fit what you are seeing, reason from the whys — the importer is silent on failure, the filename is the root, and the library is an operation log — rather than from the letter of the table.

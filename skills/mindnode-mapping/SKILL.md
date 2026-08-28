@@ -72,10 +72,14 @@ That is a confidently wrong answer about someone's own thinking, so `--extract` 
 whenever a document has any unfolded operations, and `--list` marks which maps are readable.
 Do not work around the refusal by reading the snapshot anyway.
 
-For those maps, use MindNode's own exporter — **File > Export > Markdown Text** — which always
-sees the live document. Replaying the operation log would fix this properly; it is not built,
-because the operations are character-range text edits and getting a CRDT replay subtly wrong
-fails silently.
+For those maps `--extract` falls back to **MindNode's own exporter**, driven through a
+Shortcut, which always sees the live document. That Shortcut has to be built once by hand —
+`docs/export-shortcut.md` in the arete repo has the steps — and `arete --list` says whether it
+is installed. Without it, export by hand: **File > Export > Markdown Text**.
+
+Replaying the operation log would remove the Shortcut dependency, but the operations are
+character-range text edits and a subtly wrong CRDT replay fails silently, so the exporter is
+the better bet.
 
 ## MindNode's App Intents — the supported route to both gaps
 
@@ -89,9 +93,16 @@ of them cover exactly what `arete` cannot do:
   `siblingAfter` / `siblingBefore` — so nodes **can** be added to an existing map, which OPML
   import cannot do.
 
-There is no supported way to invoke an app intent straight from a shell. The route is to build
-one Shortcut by hand in Shortcuts.app, after which `shortcuts run "<name>"` is fully
-scriptable. One manual step, then it composes like anything else.
+There is no supported way to invoke an app intent straight from a shell. The route is one
+Shortcut built by hand in Shortcuts.app, after which `shortcuts run "<name>"` is scriptable.
+
+**The export half is wired up already**: build a Shortcut called `Arete Export` that takes a
+map's name as text and returns its Markdown, and `arete --extract` uses it automatically for
+exactly the maps the snapshot cannot show. Steps: `docs/export-shortcut.md`. Override the name
+with `--shortcut NAME`.
+
+**`CreateNodeIntent` is not wired up** — that is the route to appending to an existing map,
+and it remains the one thing arete cannot do.
 
 Read the intents and their parameters with:
 

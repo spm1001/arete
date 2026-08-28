@@ -15,7 +15,8 @@ arete --opml < list.txt            # convert without touching the app
 ## Module Map
 
 Two directions. List → map is `outline` → `opml` → `mindnode`. Map → Markdown is
-`library` → `wire` → `snapshot` → `markdown`.
+`library` → `wire` → `snapshot` → `markdown`, falling back to `shortcut` when the
+snapshot is not authoritative.
 
 | Module | Role |
 |--------|------|
@@ -26,6 +27,7 @@ Two directions. List → map is `outline` → `opml` → `mindnode`. Map → Mar
 | `wire` | A minimal protobuf wire-format reader. Knows nothing about MindNode. |
 | `snapshot` | MindNode's snapshot layout → a `Node` tree, with invariants that refuse a tree we cannot trust. Pure. |
 | `markdown` | A `Node` tree → nested Markdown bullets. Pure. |
+| `shortcut` | Driving MindNode's own exporter through a Shortcut, for maps the snapshot cannot show. |
 | `cli` | Argument parsing, input selection, reporting. |
 
 ## Key Conventions
@@ -55,6 +57,13 @@ the snapshot reports a map with one blank node called "Mind Map". `library.Docum
 .`snapshot_is_authoritative` is false whenever `operation_count > 0`, and `--extract` refuses
 outright in that case. Extraction would need the operation log replayed, which is not built.
 
+**The Shortcut fallback is a contract with something we do not own.** `shortcut.export`
+promises only: text in (a map's title), text out (its Markdown). Everything else about that
+Shortcut is the user's to build — `docs/export-shortcut.md` — so failures there must be
+reported with the Shortcut's name and what it did wrong, never swallowed. Its output is passed
+through untouched unless `--plain` is asked for, because reformatting someone's exported
+thinking silently is worse than inconsistent bullets.
+
 **Retry only on a confirmed miss.** `import_opml` retries exactly once, and only when the library was readable and showed no new document. Retrying blind would produce duplicate maps.
 
 ## What MindNode does, and how we found out
@@ -80,16 +89,15 @@ Tracked as bon `art-sofoho`.
 
 ## Not done
 
-**Replaying the operation log**, which is what would make `--extract` work on maps typed in
-the app rather than imported. The operations look like character-range text edits, so this is
-a real CRDT replay and the failure mode is silent wrongness. Currently refused instead.
+**Replaying the operation log**, which would let `--extract` read maps typed in the app
+without needing Shortcuts at all. The operations look like character-range text edits, so this
+is a real CRDT replay whose failure mode is silent wrongness. The `shortcut` fallback covers
+the same ground using MindNode's own exporter, so this may never be worth building — bon
+`art-sidofe`.
 
-**MindNode's own App Intents**, which are the supported route to both of the things this tool
-cannot do. `Metadata.appintents` in the app bundle exposes 20 intents, including
-`ExportDocumentIntent` (with a `markdown` export type, so MindNode's own exporter always sees
-the live document, operation log included) and `CreateNodeIntent` (with `childOf` /
-`siblingAfter` placement, so nodes *can* be added to an existing map). They are reachable by
-building one Shortcut by hand, after which `shortcuts run` is scriptable. Tracked as bon.
+**`CreateNodeIntent`**, which would let nodes be added to an *existing* map — the other thing
+OPML import cannot do. The intent is there, with `childOf` / `siblingAfter` placement; only the
+export half of the App Intents route is wired up. Tracked as bon `art-kenosa`.
 
 **MindNode's MCP server** (`MindNodeAutomationMCP`: `add_nodes`, `move_nodes`,
 `create_connection`, …). As of 2026-08-28 it cannot be enabled: the autostart preference is

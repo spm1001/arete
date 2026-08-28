@@ -43,6 +43,10 @@ arete --extract "My Areas of Focus"   # MindNode's own Markdown
 
 **The UI labels may not match these exactly.** The action names above come from MindNode's App Intents metadata (`ExportDocumentIntent`, and the `DocumentEntityPropertyQuery` behind *Find Documents*), not from having built the shortcut — Shortcuts sometimes presents an intent under a friendlier name. The shape is right even where a label differs: find one document by name, export it as Markdown, return the text.
 
+**Tags round-trip, with one flag.** Extraction carries tags out inline as `#Important`, and
+`arete --stdin --tags` puts them back as real tags (it switches the import to FreeMind, the
+only format whose importer parses them). Verified byte-identical on a 23-line tagged map.
+
 **What MindNode's Markdown looks like.** An H1 for the centre node, `##`/`###` for the upper branches, then `-` bullets with **tab** indentation below. Tags come through inline as `#Important`, and an untitled node exports as a bare `###` or an empty bullet.
 
 Two consequences `arete` handles. Heading level counts as depth, so `## Branch` followed by `- leaf` nests properly — a parser reading only indentation would flatten the whole map to two levels. And an untitled heading is kept rather than dropped, because its level is what holds its children in place; dropping it would silently re-parent a subtree one level up.

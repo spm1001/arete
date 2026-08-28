@@ -7,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from arete import __version__, library, markdown, shortcut
-from arete.mindnode import import_opml
+from arete import __version__, freemind, library, markdown, shortcut
+from arete.mindnode import import_document
 from arete.opml import render as render_opml
 from arete.outline import depth_counts, lift_single_root, parse
 from arete.shortcut import ShortcutError
@@ -21,6 +21,7 @@ In: MindNode will not paste a multi-line list as separate nodes, but it does
 import OPML. Indentation makes the hierarchy — tabs, two spaces or four, the
 unit is worked out from the list itself. Bullets and numbering are stripped.
 MindNode names the centre node after the document, so --title sets the centre.
+With --tags, a trailing #tag on a line becomes a real MindNode tag.
 
 Out: --extract reads a map back as Markdown from MindNode's library. Maps typed
 in the app keep their content in an operation log the library alone cannot show,
@@ -33,10 +34,11 @@ examples:
   arete                              the clipboard, into a new map
   arete --title "Q3 themes"          name the centre node
   arete notes.md                     a file instead of the clipboard
-  arete --opml > themes.opml         just the OPML, do not open MindNode
+  arete --tags                       trailing #tags become real tags
+  arete --opml > themes.opml         just the import file, do not open MindNode
   arete --list                       what MindNode holds, and what can be read
   arete --extract "Q3 themes"        that map, as Markdown
-  arete --extract X --plain | arete --stdin --title X    round-trip
+  arete --extract X --plain | arete --stdin --title X --tags   round-trip
 """
 
 
@@ -66,8 +68,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stdin", action="store_true", help="read the list from stdin")
     parser.add_argument("--title", help="centre node and document name")
     parser.add_argument(
+        "--tags", action="store_true",
+        help="import via FreeMind so a trailing #tag becomes a real MindNode tag "
+             "(the tag text leaves the node title, so 'issue #42' loses its number)",
+    )
+    parser.add_argument(
         "--opml", action="store_true",
-        help="write OPML to stdout instead of opening MindNode",
+        help="write the import document to stdout instead of opening MindNode "
+             "(OPML, or FreeMind XML with --tags)",
     )
     parser.add_argument(
         "--tab-stop", type=int, default=4, metavar="N",
@@ -258,13 +266,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     title = args.title or default_title
-    opml = render_opml(rows, title)
+    if args.tags:
+        # FreeMind is the only importer that turns a trailing #word into a real
+        # tag. It is opt-in because the same parsing silently eats the number
+        # out of a line like "issue #42", which OPML preserves verbatim.
+        document, extension = freemind.render(rows, title), "mm"
+    else:
+        document, extension = render_opml(rows, title), "opml"
 
     if args.opml:
-        sys.stdout.write(opml)
+        sys.stdout.write(document)
         return 0
 
-    result = import_opml(opml, title, timeout=args.timeout)
+    result = import_document(document, title, extension, timeout=args.timeout)
     counts = depth_counts(rows)
     shape = " + ".join(f"{counts[d]} at depth {d}" for d in sorted(counts))
 

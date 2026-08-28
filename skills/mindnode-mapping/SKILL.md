@@ -39,11 +39,12 @@ That is usually the whole job. The rest of this exists because MindNode's import
 | `arete --opml > out.opml` | Just the OPML — does not touch the app |
 | `arete --tab-stop N` | Columns a tab counts for when reading indentation (default 4) |
 | `arete --timeout S` | How long to wait for the map to appear (default 12s) |
+| `arete --tags` | Import via FreeMind, so a trailing `#tag` becomes a real MindNode tag |
 | `arete --list` | Every map MindNode holds, and whether each can be read out |
 | `arete --extract NAME` | That map as Markdown — an H1 for the centre, nested bullets below |
 | `arete --extract NAME --plain` | Bullets only, so it feeds straight back in |
 
-Extract and import are inverses: `arete --extract X --plain | arete --stdin --title X` reproduces the map byte-for-byte. That works because the root is never emitted as a bullet — MindNode mints the centre node from the document name on import, so a root bullet would come back a level deeper every cycle.
+Extract and import are inverses: `arete --extract X --plain | arete --stdin --title X --tags` reproduces the map byte-for-byte, tags included. That works because the root is never emitted as a bullet — MindNode mints the centre node from the document name on import, so a root bullet would come back a level deeper every cycle.
 
 Indentation carries hierarchy. The indent unit is inferred from the list itself, so tabs, two spaces and four spaces all work, including mixed in one paste — which is exactly what a list assembled from two sources looks like. Bullets and numbering are stripped; horizontal rules are dropped.
 
@@ -60,6 +61,38 @@ Each of these cost a real debugging round on 2026-08-28 against MindNode 2026.4.
 **MindNode appears to ignore an import identical to an existing map.** Re-importing the same content produced nothing on three consecutive tries. This confounds bisecting: a test that re-imports the same file to vary something else will read as a failure of the thing being varied. Vary the content whenever you vary anything else.
 
 **A dropped import and a rejected one look the same from outside** — both are silence. Check the library rather than the app window; `arete` does this for you.
+
+## Tags: only FreeMind import creates them, and it is opt-in
+
+Tags are MindNode's own text parsing, not arete's, and the importers disagree about it.
+Measured 2026-08-28 against MindNode 2026.4.8:
+
+| Import format | A trailing `#word` |
+|---|---|
+| OPML — arete's default | stays as literal text |
+| FreeMind `.mm` — `arete --tags` | becomes a real tag, and leaves the node title |
+| plain text `.txt` | becomes a real tag, but each top-level line becomes its own root map |
+| TaskPaper `.taskpaper` | **refused at runtime** — *"The file is not of a supported type"* — even though `com.taskpaper.text` is declared in MindNode's Info.plist. Declared is not honoured. |
+
+MindNode eats a trailing *run* of tag tokens and nothing else:
+
+```
+"ends with #tag"          -> "ends with"     + tag: tag
+"two trailing #one #two"  -> "two trailing"  + tags: one, two
+"unicode tag #Café"       -> "unicode tag"   + tag: Café
+"tag then word #one and"  -> unchanged, no tags
+"#leading tag"            -> unchanged, no tags
+"C# programming"          -> unchanged, no tags
+```
+
+**Why `--tags` is opt-in rather than the default:** the same parsing silently eats the number
+out of a list item reading `"issue #42"` or `"Sprint #3"`. OPML preserves that text verbatim.
+Reach for `--tags` when a list is meant to carry tags, not by reflex.
+
+**Telling a real tag from literal text.** MindNode's Markdown export renders both as
+`#Important`, so the export cannot discriminate. The snapshot decode can: a real tag is
+*absent* from the node's title, because it is stored separately. That is the check to run when
+it matters.
 
 ## Extraction reads a snapshot, and a snapshot is only a base
 

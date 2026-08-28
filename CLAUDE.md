@@ -14,14 +14,15 @@ arete --opml < list.txt            # convert without touching the app
 
 ## Module Map
 
-Two directions. List → map is `outline` → `opml` → `mindnode`. Map → Markdown prefers `shortcut` (MindNode's own exporter, reading the live
+Two directions. List → map is `outline` → `opml` (or `freemind`, with `--tags`) → `mindnode`. Map → Markdown prefers `shortcut` (MindNode's own exporter, reading the live
 document) and falls back to `library` → `wire` → `snapshot` → `markdown` when no
 export Shortcut is installed.
 
 | Module | Role |
 |--------|------|
 | `outline` | Reading a pasted list into rows — indent inference, heading level as depth, bullet and rule stripping, single-root lifting. Pure, no I/O. |
-| `opml` | Rendering rows as OPML, with the attribute escaping MindNode's parser needs. Pure. |
+| `opml` | Rendering rows as OPML — the default import format, text verbatim. Pure. |
+| `freemind` | Rendering rows as FreeMind XML — the only import format that turns a trailing #tag into a real tag. Pure. |
 | `library` | Read-only queries against MindNode's SQLite library: which documents exist, whether each can be trusted, where its snapshot is. |
 | `mindnode` | Writing the temp file, opening it in the app, waiting for it to land, retrying once. |
 | `wire` | A minimal protobuf wire-format reader. Knows nothing about MindNode. |
@@ -41,6 +42,23 @@ export Shortcut is installed.
 **Only the outermost list marker is stripped.** In `- 1. dedupe` the dash is decoration and the `1.` is the author's own numbering. Stripping both would quietly rewrite what someone wrote.
 
 **Verification must never be able to break the import.** `library` returns `None` on any failure rather than raising, and `mindnode.import_opml` treats that as "unverified" and carries on. If MindNode relocates its library in a future version, the tool keeps working and only its reporting degrades.
+
+**Tags are MindNode's parsing, not ours, and only FreeMind import does it.** Measured
+2026-08-28 against MindNode 2026.4.8. The importers differ:
+
+| Import format | Trailing `#word` |
+|---|---|
+| OPML | stays literal text |
+| FreeMind (`.mm`) | becomes a real tag, and leaves the node title |
+| plain text (`.txt`) | becomes a real tag (but each top-level line becomes its own root) |
+| TaskPaper (`.taskpaper`) | refused: *"The file is not of a supported type"* despite `com.taskpaper.text` being declared in Info.plist |
+
+MindNode consumes a trailing *run* of tag tokens and nothing else — `"two trailing #one #two"`
+gives two tags, `"digits only #42"` tags `42`, while `"tag then word #one and"`, `"#leading
+tag"` and `"C# programming"` are all left alone.
+
+That is why `--tags` is **opt-in**: the same parsing silently eats the number out of a line
+reading `"issue #42"`, which OPML preserves. Do not make FreeMind the default to save a flag.
 
 **The snapshot field numbers are inferred, so `snapshot.read` guards them.** Nothing about
 MindNode's format is documented; every field number in `snapshot.py` was recovered by walking
@@ -83,7 +101,9 @@ Measured 2026-08-28 against MindNode 2026.4.4 on macOS 27. These are app behavio
 - Documents are a protobuf CRDT operation log (hybrid logical clocks, peer IDs) in SQLite, CloudKit-synced. Read it; never write it.
 - Sibling order is a fractional index — 200, 400, 600, 800, 1000 — so a node can be reordered without renumbering its siblings.
 - MindNode's Markdown export uses an H1 for the centre, `##`/`###` for upper branches, then tab-indented `-` bullets, with tags inline as `#Important` and untitled nodes as bare `###`. A parser reading only indentation flattens a 93-node map to two levels, so `outline.parse` counts heading level as depth.
-- `--extract X --plain | arete --stdin --title X` is byte-identical, through either route. Verified 2026-08-28 on a 23-line map, both via the snapshot and via MindNode's exporter.
+- `--extract X --plain | arete --stdin --title X --tags` is byte-identical *including tags*. Verified 2026-08-28 on a 23-line tagged map, both via the snapshot and via MindNode's exporter.
+- FreeMind takes the document's name from the filename but its root node from the XML, so the two are independent — unlike OPML, where the root comes from the filename.
+- MindNode's export renders a real tag and literal `#text` identically, so the export cannot tell you which is which. The snapshot decode can: a real tag is absent from the node title.
 
 ## The skill has two copies, on purpose (for now)
 

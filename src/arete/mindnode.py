@@ -1,4 +1,4 @@
-"""Handing an OPML document to MindNode, and checking it arrived.
+"""Handing a document to MindNode, and checking it arrived.
 
 Two behaviours of MindNode's importer shape everything here.
 
@@ -47,12 +47,12 @@ def safe_filename(title: str) -> str:
     return cleaned or "Imported list"
 
 
-def _write(opml: str, title: str) -> Path:
+def _write(document: str, title: str, extension: str) -> Path:
     # Not a TemporaryDirectory: MindNode reads the file after `open` returns,
     # and the path is worth keeping so a failed import can be retried by hand.
     directory = Path(tempfile.mkdtemp(prefix="arete-"))
-    path = directory / f"{safe_filename(title)}.opml"
-    path.write_text(opml, encoding="utf-8")
+    path = directory / f"{safe_filename(title)}.{extension}"
+    path.write_text(document, encoding="utf-8")
     return path
 
 
@@ -73,14 +73,18 @@ def _wait_for_new(before: set[str], timeout: float) -> Optional[str]:
     return None
 
 
-def import_opml(opml: str, title: str, timeout: float = 12.0) -> ImportResult:
-    """Open an OPML document in MindNode, waiting for it to land.
+def import_document(document: str, title: str, extension: str = "opml",
+                    timeout: float = 12.0) -> ImportResult:
+    """Open a document in MindNode, waiting for it to land.
+
+    `extension` picks the importer: "opml" keeps text verbatim, "mm" (FreeMind)
+    additionally parses trailing #tags — see `arete.freemind`.
 
     When the library can be read, a dropped import is detected and retried
     once. When it cannot, the import is fired blind and reported as
     unverified rather than silently assumed to have worked.
     """
-    path = _write(opml, title)
+    path = _write(document, title, extension)
     before = library.document_ids()
 
     if before is None:

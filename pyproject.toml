@@ -5,6 +5,9 @@ description = "Turn a flat list into a MindNode mind map, via OPML import"
 requires-python = ">=3.11"
 license = "MIT"
 
+[project.scripts]
+arete = "arete.cli:main"
+
 [dependency-groups]
 dev = ["pytest"]
 

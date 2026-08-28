@@ -119,15 +119,21 @@ Measured 2026-08-28 against MindNode 2026.4.4 on macOS 27. These are app behavio
 - FreeMind takes the document's name from the filename but its root node from the XML, so the two are independent — unlike OPML, where the root comes from the filename.
 - MindNode's export renders a real tag and literal `#text` identically, so the export cannot tell you which is which. The snapshot decode can: a real tag is absent from the node title.
 
-## The skill has two copies, on purpose (for now)
+## Distribution
 
-`skills/mindnode-mapping/SKILL.md` here is upstream. A **deployment copy** sits at
-`~/.claude/skills/mindnode-mapping/SKILL.md`, because a skill only in a repo is never
-loaded by any session — and this repo is not yet a marketplace plugin. Same relationship
-a `rules/` shard has with its `instructions.md`: edit here, redeploy with `cp`.
+Shipped on the batterie marketplace since suite **1.79.0** (2026-08-28):
+`claude plugin install arete@batterie`. `skills/mindnode-mapping/SKILL.md` here is the only
+copy — the assembler vendors it, so edit here and let the daily run publish it. The
+hand-deployed copy that used to sit in `~/.claude/skills/` is gone.
 
-When the marketplace entry lands, delete the deployed copy or sessions will see it twice.
-Tracked as bon `art-sofoho`.
+**Skill-only, deliberately.** No `instructions.md` and no SessionStart hook, because
+`rules/*.md` loads unconditionally in every session on every machine and this tool is
+symptom-triggered. The CLI stays a macOS-only `uv tool install`; the skill is the portable
+half and documents the ssh route for sessions elsewhere.
+
+**The plugin ships `skills/` but not `docs/`** — the assembler's skill-plugin copy-list is
+`commands skills agents hooks scripts .mcp.json CLAUDE.md instructions.md`. So references to
+the Shortcut setup guides are absolute GitHub URLs, not relative paths.
 
 ## Not done
 

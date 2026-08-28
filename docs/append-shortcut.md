@@ -11,6 +11,7 @@ Like the export half, it is an App Intent, so it needs one Shortcut built by han
 | Name | `Arete Append` (override with `--append-shortcut NAME`) |
 | Input | three lines of text: the map's title, the parent node's title, the new node's title |
 | Output | nothing needed |
+| Actions | nine: receive, split, three Get Item, Find Document, Find Node, Create Node, Edit Node |
 
 So `arete` writes a file like this and runs `shortcuts run "Arete Append" --input-path <file>`:
 
@@ -69,8 +70,22 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
    - **Create** → `Child`
    - **of** → the **Node** from step 7 — the *parent*, not the document
    - **in** → the **Document** from step 6
-   - **Node Title** → the step-5 item. This is **hidden behind the `⌄` disclosure chevron** on the action; expand it, or every node arrives untitled.
-   - **Open When Run** → **untick it**. arete calls this once per node, so leaving it on pulls MindNode to the front on every line of the list.
+   - **Open When Run** → **untick it**. The intent declares `openAppWhenRun: false`, so this is purely a preference — and arete calls the Shortcut once per node, so leaving it on pulls MindNode to the front on every line.
+
+   **There is no Node Title field, and no amount of looking will find one.** `CreateNodeIntent`
+   does have a `nodeTitle` parameter, with its own description — but none of its three summary
+   templates mentions it, and Shortcuts only renders parameters that appear in a summary. So
+   the node is created untitled and titled by the next action.
+
+9. **Edit Node** — set the title on what step 8 just made. `CreateNodeIntent`'s output type is
+   a `NodeEntity`, so the created node is available as a variable. The action's template is
+   `Set ${editType} of ${node} to ${title}`, so it must read:
+
+   ```
+   Set Title of ‹Create Node's output› to ‹Item at Index 3›
+   ```
+
+   Without this, every appended node arrives blank — and silently, since nothing errors.
 
 Nothing needs to be returned, so **Provide Output** can stay off.
 
@@ -89,6 +104,10 @@ arete --extract "In my work I am 2" | grep "test leaf"
 **Parent nodes are matched by title, so duplicate titles are ambiguous.** If two nodes in one map share a title, step 7 takes whichever MindNode returns first. `arete --append` refuses rather than guessing when the target title is not unique *in the target map*.
 
 **It cannot check other maps, though.** If step 7 has no `Document ID` filter, the lookup spans every document, and a parent title that also exists elsewhere may win. arete's pre-flight cannot see that, so keep the filter if you can.
+
+**A node created without the Edit Node step is untitled, and nothing says so.** `--append`
+re-reads the map and checks the node count, which catches a missing node but not a blank one.
+Check the map itself the first time.
 
 **Two of the three fixes fail silently.** A missing `Node Title` produces untitled nodes and a backwards `of`/`in` wiring misplaces them — neither raises an error. Only the empty-filter case above is loud. So verify the result in the map, not the absence of a complaint.
 

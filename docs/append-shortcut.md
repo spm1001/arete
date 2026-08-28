@@ -29,25 +29,42 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
 
 1. **Receive `Text` from `Share Sheet`** — the input header, same as the export Shortcut. *If there's no input: Ask For Text* is harmless.
 
-2. **Get Text from Input** — *Input* = **Shortcut Input**. This action looks redundant and is not.
-   `shortcuts run --input-path` hands the Shortcut a **file**, not a string. The export Shortcut
-   gets away with it because it drops Shortcut Input straight into a `Title is …` comparison,
-   which stringifies; **Split Text needs real text** and silently splits nothing when handed a
-   file. The symptom is deeply misleading:
+2. **Get Text from Input** — *Input* = **Shortcut Input**. Belt and braces: `shortcuts run
+   --input-path` hands the Shortcut a file rather than a string, and while a `Title is …`
+   comparison stringifies one happily, it costs nothing to coerce explicitly before splitting.
+
+3. **Split Text** — set *Text* to the **Text** from step 2 (not Shortcut Input), and *Separator*
+   to **New Lines**. This gives a three-item list.
+
+4. **Get Item from List** — *Get* **Item At Index**, *Index* **1**, from the split text. This is the **map title**. Follow it with a **Set Variable** to `MapTitle`; naming the three values makes the filters below readable.
+
+   **Type the `1` in, and check it took.** An index field you have not typed into shows a
+   greyed placeholder `1` that is indistinguishable from a real value, and an unset index
+   resolves to **0**. The result:
 
    ```
    Numerical argument out of domain
    You asked for item 0, but the first item is at index 1.
    ```
 
-   …reported against a `Get Item at Index` action whose field plainly reads **1**. The index is
-   fine. The list is empty, and Shortcuts describes an empty list this way. Two rounds of
-   debugging went into the index and the filters before the input type was suspected.
+   …reported against an action whose box plainly reads `1`. This cost three rounds of
+   debugging — the Document ID filter and the input type were both suspected and both innocent.
+   The message was literally true the whole time.
 
-3. **Split Text** — set *Text* to the **Text** from step 2 (not Shortcut Input), and *Separator*
-   to **New Lines**. This gives a three-item list.
+   The tell, if it recurs: the stored action has no `WFItemIndex` key at all. Read it with
 
-4. **Get Item from List** — *Get* **Item At Index**, *Index* **1**, from the split text. This is the **map title**. (Rename the action's output variable to `MapTitle` if Shortcuts lets you — it makes the later steps readable.)
+   ```bash
+   python3 - <<'EOF'
+   import sqlite3, plistlib, pathlib
+   db = sqlite3.connect(pathlib.Path.home()/"Library/Shortcuts/Shortcuts.sqlite")
+   pk = db.execute("SELECT Z_PK FROM ZSHORTCUT WHERE ZNAME='Arete Append'").fetchone()[0]
+   blob = db.execute("SELECT ZDATA FROM ZSHORTCUTACTIONS WHERE ZSHORTCUT=?", (pk,)).fetchone()[0]
+   for i, a in enumerate(plistlib.loads(bytes(blob)), 1):
+       print(i, a.get("WFWorkflowActionIdentifier"), a.get("WFWorkflowActionParameters", {}).get("WFItemIndex", "—"))
+   EOF
+   ```
+
+   That database is the authority on what a Shortcut actually contains; the canvas is not.
 
 5. **Get Item from List** — *Item At Index* **2**. This is the **parent node title**.
 

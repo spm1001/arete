@@ -11,7 +11,7 @@ Like the export half, it is an App Intent, so it needs one Shortcut built by han
 | Name | `Arete Append` (override with `--append-shortcut NAME`) |
 | Input | three lines of text: the map's title, the parent node's title, the new node's title |
 | Output | nothing needed |
-| Actions | nine: receive, split, three Get Item, Find Document, Find Node, Create Node, Edit Node |
+| Actions | ten: receive, **Get Text from Input**, split, three Get Item, Find Document, Find Node, Create Node, Edit Node |
 
 So `arete` writes a file like this and runs `shortcuts run "Arete Append" --input-path <file>`:
 
@@ -29,19 +29,35 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
 
 1. **Receive `Text` from `Share Sheet`** — the input header, same as the export Shortcut. *If there's no input: Ask For Text* is harmless.
 
-2. **Split Text** — set *Text* to **Shortcut Input**, and *Separator* to **New Lines**. This gives a three-item list.
+2. **Get Text from Input** — *Input* = **Shortcut Input**. This action looks redundant and is not.
+   `shortcuts run --input-path` hands the Shortcut a **file**, not a string. The export Shortcut
+   gets away with it because it drops Shortcut Input straight into a `Title is …` comparison,
+   which stringifies; **Split Text needs real text** and silently splits nothing when handed a
+   file. The symptom is deeply misleading:
 
-3. **Get Item from List** — *Get* **Item At Index**, *Index* **1**, from the split text. This is the **map title**. (Rename the action's output variable to `MapTitle` if Shortcuts lets you — it makes the later steps readable.)
+   ```
+   Numerical argument out of domain
+   You asked for item 0, but the first item is at index 1.
+   ```
 
-4. **Get Item from List** — *Item At Index* **2**. This is the **parent node title**.
+   …reported against a `Get Item at Index` action whose field plainly reads **1**. The index is
+   fine. The list is empty, and Shortcuts describes an empty list this way. Two rounds of
+   debugging went into the index and the filters before the input type was suspected.
 
-5. **Get Item from List** — *Item At Index* **3**. This is the **new node title**.
+3. **Split Text** — set *Text* to the **Text** from step 2 (not Shortcut Input), and *Separator*
+   to **New Lines**. This gives a three-item list.
 
-6. **Find `Document` where** — filter **`Title` is** the step-3 item. Tick **Limit**, **Get: 1**.
+4. **Get Item from List** — *Get* **Item At Index**, *Index* **1**, from the split text. This is the **map title**. (Rename the action's output variable to `MapTitle` if Shortcuts lets you — it makes the later steps readable.)
 
-7. **Find `Node` where** — **All** of the following are true:
-   - **`Title` is** the step-4 item
-   - **`Document ID` is** the **Document ID** of the document from step 6
+5. **Get Item from List** — *Item At Index* **2**. This is the **parent node title**.
+
+6. **Get Item from List** — *Item At Index* **3**. This is the **new node title**.
+
+7. **Find `Document` where** — filter **`Title` is** the step-4 item. Tick **Limit**, **Get: 1**.
+
+8. **Find `Node` where** — **All** of the following are true:
+   - **`Title` is** the step-5 item
+   - **`Document ID` is** the **Document ID** of the document from step 7
 
    Tick **Limit**, **Get: 1**.
 
@@ -59,7 +75,7 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
    `Create Node` reaching into an empty result. If the variable will not go into the box,
    delete this filter row and match on `Title` alone; see the caveat below.
 
-8. **Create Node** — this one reads as a sentence and the two slots are easy to get the wrong way round. The intent's own template is:
+9. **Create Node** — this one reads as a sentence and the two slots are easy to get the wrong way round. The intent's own template is:
 
    ```
    Create ${createType} of ${relativeNode} in ${document}
@@ -68,8 +84,8 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
    So it must end up reading **Create `Child` of `Node` in `Document`**:
 
    - **Create** → `Child`
-   - **of** → the **Node** from step 7 — the *parent*, not the document
-   - **in** → the **Document** from step 6
+   - **of** → the **Node** from step 8 — the *parent*, not the document
+   - **in** → the **Document** from step 7
    - **Open When Run** → **untick it**. The intent declares `openAppWhenRun: false`, so this is purely a preference — and arete calls the Shortcut once per node, so leaving it on pulls MindNode to the front on every line.
 
    **There is no Node Title field, and no amount of looking will find one.** `CreateNodeIntent`
@@ -77,7 +93,7 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
    templates mentions it, and Shortcuts only renders parameters that appear in a summary. So
    the node is created untitled and titled by the next action.
 
-9. **Edit Node** — set the title on what step 8 just made. `CreateNodeIntent`'s output type is
+10. **Edit Node** — set the title on what step 9 just made. `CreateNodeIntent`'s output type is
    a `NodeEntity`, so the created node is available as a variable. The action's template is
    `Set ${editType} of ${node} to ${title}`, so it must read:
 

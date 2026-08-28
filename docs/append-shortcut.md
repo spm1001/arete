@@ -41,9 +41,23 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
 7. **Find `Node` where** — filter **`Title` is** the step-4 item, **and** **`Document ID` is** the *Document ID* of the document from step 6. Tick **Limit**, **Get: 1**.
    *If a Document ID filter is not offered, filter on Title alone and see the caveat below.*
 
-8. **Create Node** — *Create Type* **Child**, *Document* the step-6 document, *Related Node* the step-7 node, *Node Title* the step-5 item.
+8. **Create Node** — this one reads as a sentence and the two slots are easy to get the wrong way round. The intent's own template is:
+
+   ```
+   Create ${createType} of ${relativeNode} in ${document}
+   ```
+
+   So it must end up reading **Create `Child` of `Node` in `Document`**:
+
+   - **Create** → `Child`
+   - **of** → the **Node** from step 7 — the *parent*, not the document
+   - **in** → the **Document** from step 6
+   - **Node Title** → the step-5 item. This is **hidden behind the `⌄` disclosure chevron** on the action; expand it, or every node arrives untitled.
+   - **Open When Run** → **untick it**. arete calls this once per node, so leaving it on pulls MindNode to the front on every line of the list.
 
 Nothing needs to be returned, so **Provide Output** can stay off.
+
+*Getting the slots backwards — "of `Document` in `Node`" — is the natural reading of the sentence and produces no error message, so check this one against the template above rather than against how it sounds.*
 
 ## Check it
 
@@ -59,6 +73,8 @@ arete --extract "In my work I am 2" | grep "test leaf"
 
 **If the `Document ID` filter is missing in step 7**, the node lookup spans every map, and a parent title that also exists in another document could attach the new node to the wrong map. Say so and we will find another route — matching on the document's `Nodes` property is the likely fallback.
 
-**The UI labels above come from MindNode's App Intents metadata, not from having built this.** When the export Shortcut was written up the same way, the shape was right but two labels differed — the filter field was `Title` rather than `Name`, and the parameter was `Export Type` rather than `Format`. Expect the same kind of small mismatch, and tell me what you actually see.
+**Corrections already folded in from building it (2026-08-28).** The first draft of this page named step 8's fields by their parameter names — *Document*, *Related Node* — and that is not what Shortcuts shows: it renders the action as a sentence, `Create … of … in …`, where "of" is the *relative node* and "in" is the *document*. Wiring them the way the sentence reads puts them backwards. The `Node Title` field also sits behind a disclosure chevron and is easy to miss entirely.
+
+**The shortcut's window title is not its name.** It shows the selected action instead — a correctly-named `Arete Append` displayed as "Create Node", just as `Arete Export` displayed as "Title". `shortcuts list` is the authority.
 
 **One Shortcut run per node** means a twenty-node list takes a noticeable few seconds. That is the price of not building a looping Shortcut, and it can be revisited if it grates.

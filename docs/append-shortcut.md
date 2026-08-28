@@ -38,8 +38,25 @@ New shortcut in **Shortcuts.app**, named exactly `Arete Append`.
 
 6. **Find `Document` where** — filter **`Title` is** the step-3 item. Tick **Limit**, **Get: 1**.
 
-7. **Find `Node` where** — filter **`Title` is** the step-4 item, **and** **`Document ID` is** the *Document ID* of the document from step 6. Tick **Limit**, **Get: 1**.
-   *If a Document ID filter is not offered, filter on Title alone and see the caveat below.*
+7. **Find `Node` where** — **All** of the following are true:
+   - **`Title` is** the step-4 item
+   - **`Document ID` is** the **Document ID** of the document from step 6
+
+   Tick **Limit**, **Get: 1**.
+
+   **Check the second filter's value box is actually filled.** Shortcuts will show a
+   `Document ID` variable chip *next to or below* an empty box, which looks wired up and is
+   not. An empty filter matches nothing, `Find Node` returns an empty list, and step 8 then
+   fails with:
+
+   ```
+   Numerical argument out of domain
+   You asked for item 0, but the first item is at index 1.
+   ```
+
+   That message reads like a bad index in one of the Get Item actions, and it is not — it is
+   `Create Node` reaching into an empty result. If the variable will not go into the box,
+   delete this filter row and match on `Title` alone; see the caveat below.
 
 8. **Create Node** — this one reads as a sentence and the two slots are easy to get the wrong way round. The intent's own template is:
 
@@ -69,7 +86,11 @@ arete --extract "In my work I am 2" | grep "test leaf"
 
 ## Caveats worth knowing before you rely on it
 
-**Parent nodes are matched by title, so duplicate titles are ambiguous.** If two nodes in one map share a title, step 7 takes whichever MindNode returns first. `arete --append` warns when the target title is not unique rather than guessing silently.
+**Parent nodes are matched by title, so duplicate titles are ambiguous.** If two nodes in one map share a title, step 7 takes whichever MindNode returns first. `arete --append` refuses rather than guessing when the target title is not unique *in the target map*.
+
+**It cannot check other maps, though.** If step 7 has no `Document ID` filter, the lookup spans every document, and a parent title that also exists elsewhere may win. arete's pre-flight cannot see that, so keep the filter if you can.
+
+**Two of the three fixes fail silently.** A missing `Node Title` produces untitled nodes and a backwards `of`/`in` wiring misplaces them — neither raises an error. Only the empty-filter case above is loud. So verify the result in the map, not the absence of a complaint.
 
 **If the `Document ID` filter is missing in step 7**, the node lookup spans every map, and a parent title that also exists in another document could attach the new node to the wrong map. Say so and we will find another route — matching on the document's `Nodes` property is the likely fallback.
 

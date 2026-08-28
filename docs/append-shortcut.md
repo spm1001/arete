@@ -25,6 +25,16 @@ a pension that actually pays out
 
 One node per run. That is slower than a single batched call, but it keeps the Shortcut to one straight line of actions with no looping, and `arete` already knows the tree — it walks top-down so a parent always exists before its children are added.
 
+## Or just import it
+
+[`shortcuts/Arete Append.shortcut`](../shortcuts/Arete Append.shortcut) is this Shortcut, signed and
+ready — download it, double-click, keep the name. Re-exported from the live one with
+`scripts/export-shortcuts.py`, which reads `~/Library/Shortcuts/Shortcuts.sqlite` directly.
+
+Build it by hand instead if you want to understand or audit it. The steps below are also the
+record of what went wrong the first time, which is worth reading before you trust a canvas
+that looks right.
+
 ## Building it
 
 New shortcut in **Shortcuts.app**, named exactly `Arete Append`.

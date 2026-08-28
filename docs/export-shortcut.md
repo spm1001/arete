@@ -16,6 +16,16 @@ So: build the Shortcut, and extraction stops depending on that guesswork.
 
 `arete` runs it as `shortcuts run "Arete Export" --input-path <name.txt> --output-path <out.md>`, so the Shortcut must accept text input and return text.
 
+## Or just import it
+
+[`shortcuts/Arete Export.shortcut`](../shortcuts/Arete Export.shortcut) is this Shortcut, signed and
+ready — download it, double-click, keep the name. Re-exported from the live one with
+`scripts/export-shortcuts.py`, which reads `~/Library/Shortcuts/Shortcuts.sqlite` directly.
+
+Build it by hand instead if you want to understand or audit it. The steps below are also the
+record of what went wrong the first time, which is worth reading before you trust a canvas
+that looks right.
+
 ## Building it
 
 In **Shortcuts.app**, new shortcut named exactly `Arete Export`:

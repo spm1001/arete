@@ -45,6 +45,16 @@ Measured 2026-08-28 against MindNode 2026.4.4 on macOS 27. These are app behavio
 - An import identical to an existing map appears to be ignored. This confounds bisecting — vary the content whenever you vary anything else. It cost three false conclusions about filenames and temp directories before it was spotted.
 - Documents are a protobuf CRDT operation log (hybrid logical clocks, peer IDs) in SQLite, CloudKit-synced. Read it; never write it.
 
+## The skill has two copies, on purpose (for now)
+
+`skills/mindnode-mapping/SKILL.md` here is upstream. A **deployment copy** sits at
+`~/.claude/skills/mindnode-mapping/SKILL.md`, because a skill only in a repo is never
+loaded by any session — and this repo is not yet a marketplace plugin. Same relationship
+a `rules/` shard has with its `instructions.md`: edit here, redeploy with `cp`.
+
+When the marketplace entry lands, delete the deployed copy or sessions will see it twice.
+Tracked as bon `art-sofoho`.
+
 ## Not done
 
 MindNode 2026.4.4 ships a full MCP server (`MindNodeAutomationMCP`: `add_nodes`, `move_nodes`, `create_connection`, …) which would allow adding nodes to an *existing* map — the one thing OPML import cannot do. As of 2026-08-28 it cannot be enabled: the autostart preference is reset by the app on launch and nothing listens. See bon `art-` items and the `mindnode-mapping` skill for the re-check command.
